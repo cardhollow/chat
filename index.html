@@ -59,6 +59,8 @@
       border-radius: 24px;
       padding: 22px;
       box-shadow: 0 24px 80px rgba(0,0,0,.42);
+      max-height: 95%;
+      overflow-y: auto;
     }
 
     .modal h1 {
@@ -675,8 +677,24 @@
         </div>
         <button class="secondary" id="closeMenuBtn" title="Close">✕</button>
       </div>
-
+      
       <div class="menu-grid">
+        <div class="section">
+          <h3>Avatar</h3>
+        
+          <input
+            id="avatarInput"
+            maxlength="100"
+            placeholder="https://example.com/avatar.png">
+        
+          <div class="tiny muted" style="margin-top:6px">
+            Maximum 100 characters.
+          </div>
+        
+          <button id="updateAvatarBtn" style="margin-top:10px;">
+            Update Avatar
+          </button>
+        </div>
         <div class="section">
           <h3>Preferences</h3>
           <label style="display:flex; align-items:center; gap:10px; cursor:pointer; user-select:none;">
@@ -687,7 +705,7 @@
             Saved in local storage. Default is off.
           </div>
         </div>
-
+        
         <div class="section">
           <h3>Room info</h3>
           <div class="tiny muted" id="menuRoomInfo">Room: -</div>
@@ -798,7 +816,9 @@
       replyBar: document.getElementById("replyBar"),
       clearReplyBtn: document.getElementById("clearReplyBtn"),
       replyAuthor: document.getElementById("replyAuthor"),
-      replySnippet: document.getElementById("replySnippet")
+      replySnippet: document.getElementById("replySnippet"),
+      avatarInput: document.getElementById("avatarInput"),
+      updateAvatarBtn: document.getElementById("updateAvatarBtn"),
     };
 
     el.autoScrollToggle.checked = state.autoScroll;
@@ -813,10 +833,6 @@
 
     function saveUsers(users) {
       localStorage.setItem(USERS_KEY, JSON.stringify(users));
-    }
-
-    function avatarUrl(name) {
-      return `https://api.dicebear.com/10.x/initials/png?seed=${encodeURIComponent(name)}`;
     }
 
     function escapeHtml(str) {
@@ -1592,10 +1608,75 @@
     el.userInput.value = "guest-" + Math.floor(Math.random() * 1000);
     renderMenu();
     renderReplyBar();
+    function currentAvatar() {
+      const users = loadUsers();
+      return users[state.username]?.avatar || null;
+    }
+    
+    function avatarUrl(name) {
+      const users = loadUsers();
+    
+      if (users[name]?.avatar) {
+        return users[name].avatar;
+      }
+    
+      return `https://api.dicebear.com/10.x/initials/png?seed=${encodeURIComponent(name)}`;
+    }
+    
+    async function validateAvatar(url) {
+      el.updateAvatarBtn.disabled = true;
+      const oldText = el.updateAvatarBtn.textContent;
+      el.updateAvatarBtn.textContent = "Updating...";
+    
+      try {
+        url = url.trim();
+    
+        if (!url) return "";
+        if (url.length > 100) return false;
+    
+        return await new Promise((resolve) => {
+          const img = new Image();
+    
+          img.onload = () => resolve(url);
+          img.onerror = () => resolve(false);
+    
+          img.src = url;
+        });
+    
+      } finally {
+        el.updateAvatarBtn.disabled = false;
+        el.updateAvatarBtn.textContent = oldText;
+      }
+    }
     window.addEventListener("load", () => {
     document.querySelectorAll("script").forEach(s => {
         if (!s.src) s.remove();
       });
+    });
+    el.avatarInput.value = currentAvatar() || "";
+    
+    el.updateAvatarBtn.addEventListener("click", async () => {
+      const url = await validateAvatar(el.avatarInput.value);
+    
+      if (url === false) {
+        alert("Invalid avatar URL.");
+        return;
+      }
+    
+      const users = loadUsers();
+    
+      if (!users[state.username]) users[state.username] = {};
+    
+      users[state.username].avatar = url;
+    
+      saveUsers(users);
+    
+      await sendPresenceStatus("active");
+    
+      renderMessages();
+      renderMenu();
+    
+      alert("Avatar updated!");
     });
   </script>
 </body>
