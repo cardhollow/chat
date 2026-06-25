@@ -1,0 +1,1586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ably Messenger</title>
+
+  <script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
+  <script src="https://cdn.ably.com/lib/ably-chat.umd.cjs-0.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/emoji-js@3.8.0/lib/emoji.js"></script>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #11172a;
+      --panel2: #171f38;
+      --line: rgba(255,255,255,.08);
+      --text: #eef2ff;
+      --muted: #98a4cf;
+      --accent: #7c9cff;
+      --accent2: #5d73ff;
+      --mine1: #2a4286;
+      --mine2: #223468;
+      --other1: #1a2240;
+      --other2: #141a31;
+      --good: #44d47d;
+      --warn: #ffca5c;
+      --away: #ff8f5a;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: radial-gradient(circle at top, rgba(124,156,255,.12), transparent 30%), var(--bg);
+      color: var(--text);
+      height: 100dvh;
+      overflow: hidden;
+    }
+
+    .hidden { display: none !important; }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(5, 7, 14, .92);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 30;
+    }
+
+    .modal {
+      width: min(640px, 100%);
+      background: rgba(17, 21, 38, .98);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 22px;
+      box-shadow: 0 24px 80px rgba(0,0,0,.42);
+    }
+
+    .modal h1 {
+      margin: 0 0 8px;
+      font-size: 26px;
+    }
+
+    .modal p {
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .field { margin-bottom: 14px; }
+
+    .label {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    input, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #0d1122;
+      color: var(--text);
+      border-radius: 14px;
+      outline: none;
+      padding: 12px 14px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+
+    input:focus, textarea:focus {
+      border-color: rgba(124,156,255,.7);
+      box-shadow: 0 0 0 3px rgba(124,156,255,.15);
+    }
+
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 0;
+      border-radius: 14px;
+      padding: 12px 16px;
+      font-weight: 700;
+      color: #fff;
+      background: linear-gradient(180deg, var(--accent), var(--accent2));
+      cursor: pointer;
+    }
+
+    button.secondary {
+      background: rgba(255,255,255,.08);
+      border: 1px solid var(--line);
+    }
+
+    button:disabled { opacity: .6; cursor: not-allowed; }
+
+    .app {
+      height: 100dvh;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto auto;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,.03);
+      backdrop-filter: blur(10px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    .title {
+      font-size: 20px;
+      font-weight: 800;
+      line-height: 1.1;
+    }
+
+    .subtitle {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .top-right {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .count-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.05);
+      border: 1px solid var(--line);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+      background: var(--good);
+    }
+
+    .dot.warn { background: var(--warn); }
+    .dot.away { background: var(--away); }
+
+    .menu-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      background: rgba(255,255,255,.06);
+      border: 1px solid var(--line);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      font-size: 20px;
+    }
+
+    .messages {
+      min-height: 0;
+      overflow: auto;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .empty {
+      text-align: center;
+      color: var(--muted);
+      padding: 28px 0;
+      font-size: 14px;
+    }
+
+    .message-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      width: 100%;
+    }
+
+    .message-group.mine { align-items: flex-end; }
+    .message-group.other { align-items: flex-start; }
+
+    .message-item {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      max-width: min(760px, 84%);
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .message-item.mine {
+      align-self: flex-end;
+      align-items: flex-end;
+    }
+
+    .message-item.other {
+      align-self: flex-start;
+      align-items: flex-start;
+    }
+
+    .message-box {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 12px 14px;
+      box-shadow: 0 8px 26px rgba(0,0,0,.18);
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+
+    .message-item.other .message-box {
+      background: linear-gradient(180deg, var(--other1), var(--other2));
+      border-top-left-radius: 6px;
+    }
+
+    .message-item.mine .message-box {
+      background: linear-gradient(180deg, var(--mine1), var(--mine2));
+      border-top-right-radius: 6px;
+    }
+
+    .message-meta {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.2;
+      padding: 0 4px;
+    }
+
+    .message-item.expanded .message-meta,
+    .message-item.is-bottom .message-meta {
+      display: flex;
+    }
+
+    .message-meta .name {
+      color: var(--text);
+      font-weight: 700;
+    }
+
+    .message-meta .date {
+      opacity: .92;
+    }
+    
+    .reply-preview {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    
+      width: 95%;
+      box-sizing: border-box;
+    
+      border-left: 3px solid rgba(124,156,255,.9);
+      padding: 6px 10px;
+      border-radius: 10px;
+      background: rgba(255,255,255,.05);
+    
+      cursor: pointer;
+      user-select: none;
+    
+      margin-bottom: -25px;
+    
+      overflow: hidden;
+    }
+    .reply-preview img {
+      width: 100%;
+      height: 42px;
+    
+      object-fit: cover;   /* 👈 key for cropping */
+      border-radius: 8px;
+    
+      flex: 0 0 auto;
+    }
+    .reply-preview:hover {
+      background: rgba(255,255,255,.08);
+    }
+
+    .reply-preview.missing {
+      cursor: default;
+      opacity: .9;
+    }
+
+    .reply-preview.missing:hover {
+      background: rgba(255,255,255,.05);
+    }
+
+    .reply-preview .reply-content {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .reply-preview .reply-name {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 2px;
+    }
+
+    .reply-preview .reply-text {
+      font-size: 12px;
+      color: var(--muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+
+    .reply-preview .reply-missing {
+      font-size: 12px;
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    .reply-preview .reply-marker {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-top: 4px;
+      background: rgba(124,156,255,.95);
+      flex: 0 0 auto;
+    }
+
+    .jump-highlight .message-box {
+      animation: jumpPulse 1.4s ease;
+      box-shadow: 0 0 0 0 rgba(124,156,255,.0), 0 0 0 3px rgba(124,156,255,.25);
+    }
+
+    @keyframes jumpPulse {
+      0%   { transform: scale(1); }
+      20%  { transform: scale(1.01); }
+      100% { transform: scale(1); }
+    }
+
+    .typing-dock {
+      border-top: 1px solid var(--line);
+      background: rgba(255,255,255,.02);
+      padding: 10px 18px 12px;
+      min-height: 58px;
+      display: flex;
+      align-items: center;
+    }
+
+    .typing-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+    }
+
+    .typing-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.06);
+      border-radius: 999px;
+      padding: 7px 10px 7px 7px;
+      font-size: 13px;
+      max-width: 100%;
+    }
+
+    .typing-stack {
+      display: inline-flex;
+      align-items: center;
+      position: relative;
+      margin-right: 2px;
+      min-width: 28px;
+      height: 28px;
+    }
+
+    .typing-stack .avatar {
+      position: relative;
+      border-radius: 50%;
+      object-fit: cover;
+      background: rgba(255,255,255,.06);
+      border: 1px solid var(--line);
+      width: 28px;
+      height: 28px;
+      flex: 0 0 auto;
+    }
+
+    .typing-stack .avatar + .avatar {
+      margin-left: -10px;
+    }
+
+    .typing-plus {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      margin-left: -10px;
+      border-radius: 50%;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.11);
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .typing-dots {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-left: 2px;
+    }
+
+    .typing-dots span {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--text);
+      opacity: .55;
+      animation: bounce 1.1s infinite ease-in-out;
+    }
+
+    .typing-dots span:nth-child(2) { animation-delay: .15s; }
+    .typing-dots span:nth-child(3) { animation-delay: .3s; }
+
+    @keyframes bounce {
+      0%, 80%, 100% { transform: translateY(0); opacity: .45; }
+      40% { transform: translateY(-4px); opacity: 1; }
+    }
+
+    .composer {
+      border-top: 1px solid var(--line);
+      background: rgba(255,255,255,.03);
+      padding: 16px;
+    }
+
+    .reply-bar {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 10px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(255,255,255,.05);
+      padding: 10px 12px;
+    }
+
+    .reply-bar.hidden {
+      display: none;
+    }
+
+    .reply-bar .close-reply {
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      border-radius: 999px;
+      flex: 0 0 auto;
+      background: rgba(255,255,255,.08);
+      border: 1px solid var(--line);
+      font-size: 14px;
+      line-height: 1;
+    }
+
+    .reply-bar .reply-info {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .reply-bar .reply-label {
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 2px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+
+    .reply-bar .reply-author {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 3px;
+    }
+
+    .reply-bar .reply-snippet {
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .composer-inner {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+    }
+
+    textarea {
+      min-height: 56px;
+      max-height: 160px;
+      resize: vertical;
+    }
+
+    .menu-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+      margin-top: 8px;
+    }
+
+    .section {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.04);
+      border-radius: 18px;
+      padding: 14px;
+    }
+
+    .section h3 {
+      margin: 0 0 10px;
+      font-size: 14px;
+      color: var(--text);
+    }
+
+    .mini-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 220px;
+      overflow: auto;
+    }
+
+    .mini-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 14px;
+      background: rgba(255,255,255,.03);
+      border: 1px solid rgba(255,255,255,.05);
+    }
+
+    .mini-item .meta {
+      min-width: 0;
+    }
+
+    .mini-item .meta .big {
+      font-size: 13px;
+      color: var(--text);
+      font-weight: 700;
+    }
+
+    .mini-item .meta .small {
+      font-size: 12px;
+      color: var(--muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .muted { color: var(--muted); }
+    .tiny { font-size: 12px; }
+
+    .avatar {
+      border-radius: 50%;
+      object-fit: cover;
+      background: rgba(255,255,255,.06);
+      border: 1px solid var(--line);
+      flex: 0 0 auto;
+    }
+
+    .message-box img {
+      max-width: min(100%, 400px);
+      max-height: 300px;
+      width: auto;
+      height: auto;
+      border-radius: 12px;
+    }
+
+    .avatar-sm { width: 28px; height: 28px; }
+    .avatar-md { width: 38px; height: 38px; }
+    
+    .yt-embed{
+      margin:8px 0;
+    }
+    
+    iframe{
+      width:100%;
+      max-width:500px;
+      aspect-ratio:16/9;
+      border:none;
+      border-radius:12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="overlay" id="joinOverlay">
+    <div class="modal">
+      <h1>Join chat</h1>
+      <p>Enter a room, username, and password. If the username does not exist yet, the password you set becomes its saved password in this browser.</p>
+
+      <div class="field">
+        <span class="label">Chatroom</span>
+        <input id="roomInput" placeholder="general" />
+      </div>
+
+      <div class="field">
+        <span class="label">Username</span>
+        <input id="userInput" placeholder="John" />
+      </div>
+
+      <div class="field">
+        <span class="label">Password</span>
+        <input id="passInput" type="password" placeholder="Enter or create password" />
+      </div>
+
+      <div class="actions">
+        <button id="joinBtn">Join</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="menuOverlay">
+    <div class="modal">
+      <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px;">
+        <div>
+          <h1 style="margin-bottom:4px;">Settings</h1>
+          <p style="margin-bottom:0;">Room info, online users, and preferences.</p>
+        </div>
+        <button class="secondary" id="closeMenuBtn" title="Close">✕</button>
+      </div>
+
+      <div class="menu-grid">
+        <div class="section">
+          <h3>Preferences</h3>
+          <label style="display:flex; align-items:center; gap:10px; cursor:pointer; user-select:none;">
+            <input type="checkbox" id="autoScrollToggle" style="width:auto; transform:scale(1.1);" />
+            <span>Auto-scroll when someone types or sends a message</span>
+          </label>
+          <div class="tiny muted" style="margin-top:8px;">
+            Saved in local storage. Default is off.
+          </div>
+        </div>
+
+        <div class="section">
+          <h3>Room info</h3>
+          <div class="tiny muted" id="menuRoomInfo">Room: -</div>
+          <div class="tiny muted" id="menuUserInfo">You: -</div>
+          <div class="tiny muted" id="menuConnInfo">Status: -</div>
+        </div>
+
+        <div class="section">
+          <h3>Online now</h3>
+          <div class="mini-list" id="menuOnlineList"></div>
+        </div>
+
+        <div class="section">
+          <h3>Inactive / away</h3>
+          <div class="mini-list" id="menuAwayList"></div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="saveSettingsBtn">Save settings</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="app hidden" id="app">
+    <div class="topbar">
+      <div class="top-left">
+        <div class="title" id="topTitle">Room</div>
+        <div class="subtitle">Messages from you appear on the right. Everyone else appears on the left.</div>
+      </div>
+
+      <div class="top-right">
+        <div class="count-pill"><span class="dot"></span><span id="onlineCount">0</span> online</div>
+        <div class="count-pill"><span class="dot away"></span><span id="inactiveCount">0</span> inactive</div>
+        <button class="menu-btn" id="menuBtn" title="Settings">☰</button>
+      </div>
+    </div>
+
+    <div class="messages" id="messagesList"></div>
+
+    <div class="typing-dock hidden" id="typingDock">
+      <div class="typing-row" id="typingDockContent"></div>
+    </div>
+
+    <div class="composer">
+      <div class="reply-bar hidden" id="replyBar">
+        <button class="close-reply" id="clearReplyBtn" title="Cancel reply">✕</button>
+        <div class="reply-info">
+          <div class="reply-label">Replying to</div>
+          <div class="reply-author" id="replyAuthor">-</div>
+          <div class="reply-snippet" id="replySnippet">-</div>
+        </div>
+      </div>
+
+      <div class="composer-inner">
+        <textarea id="messageInput" placeholder="Type a message..."></textarea>
+        <button id="sendBtn">Send</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    const ABLY_API_KEY = "cAcdHw.nX-eHg:JnFXnKmlPiJYPPDazl38FK9VCQxDLMr6uE4MqAwSLhE";
+    const USERS_KEY = "ably_demo_users_v7";
+    const PREF_KEY = "ably_demo_autoscroll_v1";
+
+    const state = {
+      roomName: "",
+      username: "",
+      password: "",
+      realtime: null,
+      chatClient: null,
+      room: null,
+      presenceMap: new Map(),
+      knownUsers: new Map(),
+      messages: new Map(),
+      typingIds: new Set(),
+      connectionState: "disconnected",
+      autoScroll: JSON.parse(localStorage.getItem(PREF_KEY) || "false"),
+      expandedMessageSerial: null,
+      replyTo: null
+    };
+
+    const el = {
+      joinOverlay: document.getElementById("joinOverlay"),
+      menuOverlay: document.getElementById("menuOverlay"),
+      app: document.getElementById("app"),
+      joinBtn: document.getElementById("joinBtn"),
+      roomInput: document.getElementById("roomInput"),
+      userInput: document.getElementById("userInput"),
+      passInput: document.getElementById("passInput"),
+      topTitle: document.getElementById("topTitle"),
+      onlineCount: document.getElementById("onlineCount"),
+      inactiveCount: document.getElementById("inactiveCount"),
+      messagesList: document.getElementById("messagesList"),
+      typingDock: document.getElementById("typingDock"),
+      typingDockContent: document.getElementById("typingDockContent"),
+      messageInput: document.getElementById("messageInput"),
+      sendBtn: document.getElementById("sendBtn"),
+      menuBtn: document.getElementById("menuBtn"),
+      closeMenuBtn: document.getElementById("closeMenuBtn"),
+      menuRoomInfo: document.getElementById("menuRoomInfo"),
+      menuUserInfo: document.getElementById("menuUserInfo"),
+      menuConnInfo: document.getElementById("menuConnInfo"),
+      menuOnlineList: document.getElementById("menuOnlineList"),
+      menuAwayList: document.getElementById("menuAwayList"),
+      autoScrollToggle: document.getElementById("autoScrollToggle"),
+      saveSettingsBtn: document.getElementById("saveSettingsBtn"),
+      replyBar: document.getElementById("replyBar"),
+      clearReplyBtn: document.getElementById("clearReplyBtn"),
+      replyAuthor: document.getElementById("replyAuthor"),
+      replySnippet: document.getElementById("replySnippet")
+    };
+
+    el.autoScrollToggle.checked = state.autoScroll;
+
+    function loadUsers() {
+      try {
+        return JSON.parse(localStorage.getItem(USERS_KEY) || "{}");
+      } catch {
+        return {};
+      }
+    }
+
+    function saveUsers(users) {
+      localStorage.setItem(USERS_KEY, JSON.stringify(users));
+    }
+
+    function avatarUrl(name) {
+      return `https://api.dicebear.com/10.x/initials/png?seed=${encodeURIComponent(name)}`;
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function cssEscapeValue(value) {
+      const s = String(value);
+      if (window.CSS && typeof CSS.escape === "function") return CSS.escape(s);
+      return s.replace(/["\\]/g, "\\$&");
+    }
+
+    function truncateText(text, max = 140) {
+      const s = String(text || "").replace(/\s+/g, " ").trim();
+      if (s.length <= max) return s;
+      return s.slice(0, max - 1) + "…";
+    }
+
+    function displayNameForClientId(clientId) {
+      if (!clientId) return "Guest";
+      const info = state.knownUsers.get(clientId);
+      return info?.username || clientId || "Guest";
+    }
+
+    function getUserInfo(clientId) {
+      const fallbackName = displayNameForClientId(clientId);
+      const existing = state.knownUsers.get(clientId) || {};
+      return {
+        username: existing.username || fallbackName,
+        avatar: existing.avatar || avatarUrl(fallbackName),
+        status: existing.status || "active",
+        lastSeen: existing.lastSeen || Date.now()
+      };
+    }
+
+    function rememberUser(clientId, patch = {}) {
+      if (!clientId) return;
+      const prev = getUserInfo(clientId);
+      const next = {
+        ...prev,
+        ...patch,
+        username: patch.username || prev.username || clientId,
+        avatar: patch.avatar || prev.avatar || avatarUrl(patch.username || prev.username || clientId),
+        lastSeen: patch.lastSeen || Date.now()
+      };
+      state.knownUsers.set(clientId, next);
+    }
+
+    function syncCurrentUserKnownInfo(status = "active") {
+      rememberUser(state.username, {
+        username: state.username,
+        avatar: avatarUrl(state.username),
+        status,
+        lastSeen: Date.now()
+      });
+    }
+
+    function computeInactiveCount() {
+      let inactive = 0;
+      for (const member of state.presenceMap.values()) {
+        const status = String(member?.data?.status || "active").toLowerCase();
+        if (status === "away" || status === "inactive") inactive++;
+      }
+      return inactive;
+    }
+
+    function renderTopCounts() {
+      el.onlineCount.textContent = String(state.presenceMap.size);
+      el.inactiveCount.textContent = String(computeInactiveCount());
+    }
+
+    function buildTypingSnippet() {
+      const typers = Array.from(state.typingIds).filter(id => id !== state.username);
+
+      if (!typers.length) return "";
+
+      const show = typers.slice(0, 3);
+      const extra = typers.length - show.length;
+
+      const avatars = show.map(clientId => {
+        const info = getUserInfo(clientId);
+        return `<img class="avatar avatar-sm" src="${escapeHtml(info.avatar)}" alt="${escapeHtml(info.username)}" title="${escapeHtml(info.username)}">`;
+      }).join("");
+
+      return `
+        <div class="typing-chip">
+          <span class="typing-stack">
+            ${avatars}
+            ${extra > 0 ? `<span class="typing-plus">+${extra}</span>` : ""}
+          </span>
+          <span>${escapeHtml(typers.map(id => displayNameForClientId(id)).join(", "))}</span>
+          <span class="typing-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+        </div>
+      `;
+    }
+
+    function scrollMessagesToBottom() {
+      el.messagesList.scrollTop = el.messagesList.scrollHeight;
+    }
+
+    function scrollToMessage(serial) {
+      if (!serial) return;
+      const selector = `.message-item[data-serial="${cssEscapeValue(serial)}"]`;
+      const target = el.messagesList.querySelector(selector);
+      if (!target) return false;
+
+      target.classList.add("jump-highlight");
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+
+      window.setTimeout(() => {
+        target.classList.remove("jump-highlight");
+      }, 1500);
+
+      return true;
+    }
+
+    function groupMessagesBySender(messages) {
+      const groups = [];
+      for (const msg of messages) {
+        const last = groups[groups.length - 1];
+        if (last && last.clientId === msg.clientId) {
+          last.items.push(msg);
+        } else {
+          groups.push({
+            clientId: msg.clientId || "Guest",
+            items: [msg]
+          });
+        }
+      }
+      return groups;
+    }
+
+    function isCurrentUser(senderId) {
+      return senderId === state.username;
+    }
+    
+    const emoji = new EmojiConvertor();
+    
+    emoji.replace_mode = "unified";
+    emoji.allow_native = true;
+    function replaceYoutubeLinks(html) {
+      return html.replace(
+        /<a[^>]*href="https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{11})[^"]*"[^>]*>.*?<\/a>/gi,
+        (_, id) => `
+    <div class="yt-embed">
+      <iframe
+        src="https://www.youtube.com/embed/${id}"
+        allowfullscreen>
+      </iframe>
+    </div>`
+      );
+    }
+    function renderMarkdown(text) {
+      let html = marked.parse(text || "");
+      html = emoji.replace_colons(html);
+      html = replaceYoutubeLinks(html);
+      return html;
+    }
+    function resolveReplyTarget(reply) {
+      if (!reply) return null;
+      if (reply.serial && state.messages.has(reply.serial)) {
+        return state.messages.get(reply.serial);
+      }
+      for (const msg of state.messages.values()) {
+        const ts = msg.timestamp ? new Date(msg.timestamp).getTime() : null;
+        if (
+          reply.serial && msg.serial === reply.serial ||
+          reply.timestamp && ts === Number(reply.timestamp) ||
+          (reply.clientId && msg.clientId === reply.clientId && reply.previewText && String(msg.text || "").includes(String(reply.previewText).slice(0, 24)))
+        ) {
+          return msg;
+        }
+      }
+      return null;
+    }
+
+    function buildReplyInlineHtml(reply) {
+      const target = resolveReplyTarget(reply);
+
+      if (!target) {
+        return `
+          <div class="reply-preview missing">
+            <span class="reply-marker"></span>
+            <div class="reply-content">
+              <div class="reply-missing"><em>Original message not found.</em></div>
+            </div>
+          </div>
+        `;
+      }
+
+      const info = getUserInfo(target.clientId);
+      const preview = truncateText(target.text || reply.previewText || "", 140);
+
+      return `
+        <div class="reply-preview" data-reply-serial="${escapeHtml(target.serial || reply.serial || "")}">
+          <span class="reply-marker"></span>
+          <div class="reply-content">
+            <div class="reply-name">${renderMarkdown(info.username || target.clientId || "Guest")}</div>
+            <div class="reply-text">${renderMarkdown(preview)}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderReplyBar() {
+      const reply = state.replyTo;
+      if (!reply) {
+        el.replyBar.classList.add("hidden");
+        el.replyAuthor.textContent = "";
+        el.replySnippet.textContent = "";
+        return;
+      }
+
+      const target = resolveReplyTarget(reply);
+      const author = target ? displayNameForClientId(target.clientId) : displayNameForClientId(reply.clientId);
+      const snippet = target ? (target.text || reply.previewText || "") : (reply.previewText || "Original message not found.");
+
+      el.replyBar.classList.remove("hidden");
+      el.replyAuthor.textContent = author;
+      el.replySnippet.textContent = truncateText(snippet, 140);
+    }
+
+    function setReplyMode(msg) {
+      if (!msg) return;
+      state.replyTo = {
+        serial: msg.serial,
+        timestamp: msg.timestamp ? new Date(msg.timestamp).getTime() : Date.now(),
+        clientId: msg.clientId || "",
+        previewText: String(msg.text || "").substring(0, 140)
+      };
+      renderReplyBar();
+      el.messageInput.focus();
+    }
+
+    function clearReplyMode() {
+      state.replyTo = null;
+      renderReplyBar();
+    }
+
+    function renderMessages() {
+      const items = Array.from(state.messages.values())
+        .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+      const groups = groupMessagesBySender(items);
+
+      const messageHtml = groups.map(group => {
+        const mine = isCurrentUser(group.clientId);
+        const groupClass = mine ? "mine" : "other";
+
+        const entries = group.items.map((msg, index) => {
+          const senderId = msg.clientId || "Guest";
+          const isMine = isCurrentUser(senderId);
+
+          const senderInfo = isMine
+            ? { username: state.username, avatar: avatarUrl(state.username) }
+            : getUserInfo(senderId);
+
+          rememberUser(senderId, {
+            username: senderInfo.username || senderId,
+            avatar: senderInfo.avatar || avatarUrl(senderInfo.username || senderId)
+          });
+
+          const isBottom = index === group.items.length - 1;
+          const isExpanded = state.expandedMessageSerial === msg.serial;
+          const showMeta = isBottom || isExpanded;
+
+          const date = msg.timestamp ? new Date(msg.timestamp).toLocaleDateString([], {
+            month: "short",
+            day: "2-digit",
+            year: "numeric"
+          }) : "";
+
+          const time = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit"
+          }) : "";
+
+          const replyMeta = msg.metadata?.reply;
+          const replyHtml = replyMeta ? buildReplyInlineHtml(replyMeta) : "";
+
+          return `
+            <div class="message-item ${isMine ? "mine" : "other"} ${showMeta ? "expanded" : ""} ${isBottom ? "is-bottom" : ""}"
+                 data-serial="${escapeHtml(msg.serial)}"
+                 data-client="${escapeHtml(senderId)}">
+              ${replyHtml}
+              <div class="message-box">${renderMarkdown(msg.text || "")}</div>
+              <div class="message-meta">
+                <img class="avatar avatar-sm" src="${escapeHtml(senderInfo.avatar)}" alt="${escapeHtml(senderInfo.username)}">
+                <span class="name">${escapeHtml(senderInfo.username)}</span>
+                <span class="date">${escapeHtml(date)} • ${escapeHtml(time)}</span>
+              </div>
+            </div>
+          `;
+        }).join("");
+
+        return `<div class="message-group ${groupClass}">${entries}</div>`;
+      }).join("");
+
+      el.messagesList.innerHTML = messageHtml || '<div class="empty">No messages yet. Say hello.</div>';
+
+      const typingHtml = buildTypingSnippet();
+      if (typingHtml) {
+        const wrapper = document.createElement("div");
+        wrapper.innerHTML = typingHtml;
+        el.messagesList.appendChild(wrapper.firstElementChild);
+      }
+
+      if (state.autoScroll) scrollMessagesToBottom();
+      renderTopCounts();
+      renderReplyBar();
+    }
+
+    function upsertMessage(message) {
+      if (!message || !message.serial) return;
+      state.messages.set(message.serial, message);
+      if (message.clientId) {
+        rememberUser(message.clientId, { username: displayNameForClientId(message.clientId) });
+      }
+      renderMessages();
+    }
+
+    function normalizeTypingUsers(event) {
+      if (Array.isArray(event.currentTypers)) return event.currentTypers;
+      if (event.currentlyTyping instanceof Set) {
+        return Array.from(event.currentlyTyping).map(clientId => ({ clientId }));
+      }
+      if (Array.isArray(event.currentlyTyping)) {
+        return event.currentlyTyping.map(clientId => ({ clientId }));
+      }
+      return [];
+    }
+
+    function handleTypingEvent(event) {
+      const current = normalizeTypingUsers(event);
+      state.typingIds = new Set(current.map(u => u.clientId).filter(Boolean));
+      renderMessages();
+    }
+
+    function handlePresenceEvent(event) {
+      const member = event.member;
+      if (!member) return;
+
+      const clientId = member.clientId || "";
+      const name = member.data?.username || clientId || "Guest";
+      const avatar = member.data?.avatar || avatarUrl(name);
+      const status = String(member.data?.status || "active").toLowerCase();
+      const type = String(event.type || "").toLowerCase();
+
+      rememberUser(clientId, {
+        username: name,
+        avatar,
+        status,
+        lastSeen: member.updatedAt ? new Date(member.updatedAt).getTime() : Date.now()
+      });
+
+      if (status.includes("away")) {
+        state.presenceMap.delete(clientId);
+        alertMessage(`${name} left the room`, 0, 5000);
+      } else if (status.includes("active")) {
+        state.presenceMap.set(clientId, member);
+        alertMessage(`${name} entered the room`, 0, 5000);
+      }
+
+      renderMessages();
+      renderMenu();
+    }
+
+    async function verifyOrCreatePassword(username, password) {
+      const users = loadUsers();
+
+      if (!users[username]) {
+        users[username] = password;
+        saveUsers(users);
+        return;
+      }
+
+      if (users[username] !== password) {
+        throw new Error("Wrong password");
+      }
+    }
+
+    function setAppVisible(visible) {
+      el.app.classList.toggle("hidden", !visible);
+      el.joinOverlay.classList.toggle("hidden", visible);
+    }
+
+    function setMenuVisible(visible) {
+      el.menuOverlay.classList.toggle("hidden", !visible);
+    }
+
+    function renderMenu() {
+      el.menuRoomInfo.textContent = `Room: ${state.roomName || "-"}`;
+      el.menuUserInfo.textContent = `You: ${state.username || "-"}`;
+      el.menuConnInfo.textContent = `Status: ${state.connectionState || "-"}`;
+
+      const members = Array.from(state.presenceMap.values())
+        .sort((a, b) => displayNameForClientId(a.clientId).localeCompare(displayNameForClientId(b.clientId)));
+
+      const online = members.map(member => {
+        const info = getUserInfo(member.clientId);
+        const status = String(member.data?.status || "active").toLowerCase();
+        const badge = status === "away" || status === "inactive" ? "Away" : "Online";
+        return `
+          <div class="mini-item">
+            <img class="avatar avatar-sm" src="${escapeHtml(info.avatar)}" alt="${escapeHtml(info.username)}">
+            <div class="meta">
+              <div class="big">${escapeHtml(info.username)} <span class="muted tiny">(${escapeHtml(badge)})</span></div>
+              <div class="small">${escapeHtml(member.clientId || "")}</div>
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      const away = members.filter(member => {
+        const status = String(member.data?.status || "active").toLowerCase();
+        return status === "away" || status === "inactive";
+      });
+
+      const awayHtml = away.map(member => {
+        const info = getUserInfo(member.clientId);
+        return `
+          <div class="mini-item">
+            <img class="avatar avatar-sm" src="${escapeHtml(info.avatar)}" alt="${escapeHtml(info.username)}">
+            <div class="meta">
+              <div class="big">${escapeHtml(info.username)}</div>
+              <div class="small">away / inactive</div>
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      el.menuOnlineList.innerHTML = online || '<div class="muted tiny">No one online yet.</div>';
+      el.menuAwayList.innerHTML = awayHtml || '<div class="muted tiny">No away users right now.</div>';
+    }
+
+    async function sendPresenceStatus(status) {
+      if (!state.room || !state.username) return;
+
+      const payload = {
+        username: state.username,
+        avatar: avatarUrl(state.username),
+        status,
+        lastSeen: Date.now()
+      };
+
+      syncCurrentUserKnownInfo(status);
+
+      try {
+        await state.room.presence.update(payload);
+      } catch (err) {
+        try {
+          await state.room.presence.enter(payload);
+        } catch (innerErr) {
+          console.warn("presence update/enter failed", innerErr);
+        }
+      }
+    }
+
+    function saveAutoScrollPreference() {
+      state.autoScroll = !!el.autoScrollToggle.checked;
+      localStorage.setItem(PREF_KEY, JSON.stringify(state.autoScroll));
+    }
+
+    async function joinRoom() {
+      state.roomName = el.roomInput.value.trim();
+      state.username = el.userInput.value.trim();
+      state.password = el.passInput.value;
+
+      if (!ABLY_API_KEY || ABLY_API_KEY === "PASTE_YOUR_ABLY_API_KEY_HERE") {
+        alert("Replace the ABLY_API_KEY variable first.");
+        return;
+      }
+
+      if (!state.roomName || !state.username || !state.password) {
+        alert("Fill in room, username, and password.");
+        return;
+      }
+
+      try {
+        await verifyOrCreatePassword(state.username, state.password);
+      } catch {
+        alert("Wrong password for that username.");
+        return;
+      }
+
+      el.joinBtn.disabled = true;
+      el.joinBtn.textContent = "Joining...";
+
+      try {
+        state.realtime = new Ably.Realtime({
+          key: ABLY_API_KEY,
+          clientId: state.username
+        });
+
+        state.chatClient = new AblyChat.ChatClient(state.realtime);
+
+        state.chatClient.connection.onStatusChange((change) => {
+          state.connectionState = change.current;
+          renderMenu();
+        });
+
+        state.connectionState = "connecting";
+
+        state.room = await state.chatClient.rooms.get(state.roomName);
+        await state.room.attach();
+
+        syncCurrentUserKnownInfo("active");
+
+        await state.room.presence.enter({
+          username: state.username,
+          avatar: avatarUrl(state.username),
+          status: "active",
+          lastSeen: Date.now()
+        });
+
+        el.topTitle.textContent = `#${state.roomName}`;
+        state.connectionState = "connected";
+
+        const present = await state.room.presence.get();
+        state.presenceMap.clear();
+        for (const member of present) {
+          if (!member?.clientId) continue;
+          state.presenceMap.set(member.clientId, member);
+          rememberUser(member.clientId, {
+            username: member.data?.username || member.clientId,
+            avatar: member.data?.avatar || avatarUrl(member.data?.username || member.clientId),
+            status: String(member.data?.status || "active").toLowerCase(),
+            lastSeen: member.updatedAt ? new Date(member.updatedAt).getTime() : Date.now()
+          });
+        }
+
+        const messageSub = state.room.messages.subscribe((event) => {
+          upsertMessage(event.message);
+        });
+
+        const history = await messageSub.historyBeforeSubscribe({ limit: 50 });
+        for (const message of history.items.slice().reverse()) {
+          state.messages.set(message.serial, message);
+          if (message.clientId) {
+            rememberUser(message.clientId, {
+              username: displayNameForClientId(message.clientId),
+              avatar: avatarUrl(displayNameForClientId(message.clientId))
+            });
+          }
+        }
+
+        state.room.typing.subscribe((typingEvent) => {
+          handleTypingEvent(typingEvent);
+        });
+
+        state.room.presence.subscribe((event) => {
+          handlePresenceEvent(event);
+        });
+
+        renderMessages();
+        renderMenu();
+
+        setAppVisible(true);
+        el.messageInput.focus();
+      } catch (err) {
+        console.error(err);
+        alert("Failed to join the room. Check the API key and open the console.");
+        el.joinBtn.disabled = false;
+        el.joinBtn.textContent = "Join";
+        state.connectionState = "failed";
+      }
+    }
+
+    async function sendMessage() {
+      if (!state.room) return;
+      const text = el.messageInput.value.trim();
+      if (!text) return;
+
+      el.messageInput.value = "";
+
+      const payload = {
+        text,
+        metadata: state.replyTo ? { reply: state.replyTo } : {}
+      };
+
+      try {
+        await state.room.messages.send(payload);
+        clearReplyMode();
+        await state.room.typing.stop().catch(() => {});
+      } catch (err) {
+        console.error(err);
+        alert("Message send failed.");
+      }
+    }
+
+    el.joinBtn.addEventListener("click", joinRoom);
+    el.sendBtn.addEventListener("click", sendMessage);
+
+    [el.roomInput, el.userInput, el.passInput].forEach((input) => {
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") joinRoom();
+      });
+    });
+
+    el.messageInput.addEventListener("input", async () => {
+      if (!state.room) return;
+      if (el.messageInput.value.trim()) {
+        await state.room.typing.keystroke().catch(() => {});
+      } else {
+        await state.room.typing.stop().catch(() => {});
+      }
+    });
+
+    el.messageInput.addEventListener("keydown", async (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        await sendMessage();
+      }
+    });
+
+    el.menuBtn.addEventListener("click", () => {
+      el.autoScrollToggle.checked = state.autoScroll;
+      renderMenu();
+      setMenuVisible(true);
+    });
+
+    el.closeMenuBtn.addEventListener("click", () => setMenuVisible(false));
+    el.menuOverlay.addEventListener("click", (e) => {
+      if (e.target === el.menuOverlay) setMenuVisible(false);
+    });
+
+    el.autoScrollToggle.addEventListener("change", saveAutoScrollPreference);
+    el.saveSettingsBtn.addEventListener("click", () => {
+      saveAutoScrollPreference();
+      setMenuVisible(false);
+    });
+
+    el.clearReplyBtn.addEventListener("click", clearReplyMode);
+
+    function clearExpandedMessage() {
+      if (state.expandedMessageSerial !== null) {
+        state.expandedMessageSerial = null;
+        renderMessages();
+      }
+    }
+
+    let clickTimer = null;
+
+    el.messagesList.addEventListener("click", (e) => {
+      const replyTarget = e.target.closest(".reply-preview[data-reply-serial]");
+      if (replyTarget) {
+        const serial = replyTarget.dataset.replySerial;
+        if (serial) scrollToMessage(serial);
+        e.stopPropagation();
+        return;
+      }
+
+      const item = e.target.closest(".message-item");
+      if (!item) return;
+
+      if (clickTimer) clearTimeout(clickTimer);
+      clickTimer = setTimeout(() => {
+        const serial = item.dataset.serial;
+        state.expandedMessageSerial = state.expandedMessageSerial === serial ? null : serial;
+        renderMessages();
+      }, 180);
+
+      e.stopPropagation();
+    });
+
+    el.messagesList.addEventListener("dblclick", (e) => {
+      const item = e.target.closest(".message-item");
+      if (!item) return;
+
+      if (clickTimer) {
+        clearTimeout(clickTimer);
+        clickTimer = null;
+      }
+
+      const serial = item.dataset.serial;
+      const msg = state.messages.get(serial);
+      if (msg) setReplyMode(msg);
+      e.stopPropagation();
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".message-item")) {
+        clearExpandedMessage();
+      }
+    });
+
+    async function refreshPresenceForVisibility() {
+      if (!state.room || !state.username) return;
+      if (document.visibilityState === "visible") {
+        await sendPresenceStatus("active");
+      } else {
+        await sendPresenceStatus("away");
+      }
+      renderMenu();
+      renderMessages();
+    }
+
+    document.addEventListener("visibilitychange", refreshPresenceForVisibility);
+    window.addEventListener("focus", refreshPresenceForVisibility);
+
+    window.addEventListener("beforeunload", () => {
+      try {
+        if (state.room && state.username) {
+          state.room.presence.leave({
+            username: state.username,
+            avatar: avatarUrl(state.username),
+            status: "offline",
+            lastSeen: Date.now()
+          });
+        }
+      } catch {}
+      try {
+        if (state.realtime) state.realtime.close();
+      } catch {}
+    });
+    
+    function alertMessage(text, delay = 0, duration = 4000) {
+      setTimeout(() => {
+        const container = document.createElement("div");
+        container.className = "message-group other";
+
+        container.innerHTML = `
+          <div class="message-item other system-alert">
+            <div class="message-box">${escapeHtml(text)}</div>
+            <div class="message-meta" style="display:flex;">
+              <img class="avatar avatar-sm"
+                   src="${avatarUrl("SystemAlert")}"
+                   alt="SystemAlert">
+              <span class="name">SystemAlert</span>
+              <span class="date">${new Date().toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit"
+              })}</span>
+            </div>
+          </div>
+        `;
+
+        el.messagesList.appendChild(container);
+
+        if (state.autoScroll) {
+          el.messagesList.scrollTop = el.messagesList.scrollHeight;
+        }
+
+        setTimeout(() => {
+          container.remove();
+        }, duration);
+
+      }, delay);
+    }
+
+    el.roomInput.value = "general";
+    el.userInput.value = "guest-" + Math.floor(Math.random() * 1000);
+    renderMenu();
+    renderReplyBar();
+    window.addEventListener("load", () => {
+    document.querySelectorAll("script").forEach(s => {
+        if (!s.src) s.remove();
+      });
+    });
+  </script>
+</body>
+</html>
