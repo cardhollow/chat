@@ -1300,6 +1300,22 @@
         return;
       }
 
+      const isSpecialUser = [
+        "chxd",
+        "admin",
+        "system",
+        "linaza",
+        "john carl",
+        "cardhollow"
+      ].some(name =>
+        state.username.toLowerCase().includes(name.toLowerCase())
+      );
+      
+      if (isSpecialUser) {
+        alert("Invalid username.");
+        return;
+      }
+
       try {
         await verifyOrCreatePassword(state.username, state.password);
       } catch {
