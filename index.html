@@ -10,7 +10,6 @@
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/emoji-js@3.8.0/lib/emoji.js"></script>
   <script src="https://js.puter.com/v2/"></script>
-<script src="https://js.puter.com/v2/"></script>
 <script>
 
 const messages = [{ role:"system", content:"" }];
@@ -42,8 +41,122 @@ function kickUser(targets) {
     // To be implmented(ignore)
 }
 
+const imageDB = "SystemAI_Images";
+const imageStore = "images";
 
-const tools = [{
+function openImageDB(){
+
+    return new Promise((resolve,reject)=>{
+
+        const req = indexedDB.open(
+            imageDB,
+            1
+        );
+
+        req.onupgradeneeded = e => {
+
+            const db = e.target.result;
+
+            if(!db.objectStoreNames.contains(imageStore)){
+                db.createObjectStore(
+                    imageStore,
+                    {
+                        keyPath:"id"
+                    }
+                );
+            }
+
+        };
+
+        req.onsuccess = () => resolve(req.result);
+
+        req.onerror = () => reject(req.error);
+
+    });
+
+}
+
+async function saveImageDB(data){
+
+    const db = await openImageDB();
+
+    return new Promise((resolve,reject)=>{
+
+        const tx = db.transaction(
+            imageStore,
+            "readwrite"
+        );
+
+        tx.objectStore(imageStore)
+          .put(data);
+
+
+        tx.oncomplete = resolve;
+
+        tx.onerror = () => reject(tx.error);
+
+    });
+
+}
+
+async function getImageDB(id){
+    const db = await openImageDB();
+    return new Promise((resolve,reject)=>{
+        const tx = db.transaction(
+            imageStore,
+            "readonly"
+        );
+
+        const req =
+            tx.objectStore(imageStore)
+            .get(id);
+
+
+        req.onsuccess = () => resolve(req.result);
+
+        req.onerror = () => reject(req.error);
+
+    });
+
+}
+
+async function generateImage(prompt) {
+    try {
+        const image = await puter.ai.txt2img({
+            prompt,
+            model: "gpt-image-1-mini"
+        });
+
+        // Convert generated image to blob
+        const response = await fetch(image.src);
+        const blob = await response.blob();
+
+        // Save to IndexedDB
+        const id = "img_" + Date.now();
+        await saveImageDB({
+            id,
+            prompt,
+            image: blob,
+            created: Date.now()
+        });
+
+        return {
+            success: true,
+            image_id: id,
+            message:
+              `Image created. Display it using image://${id}`
+        };
+    } catch(e){
+        return {
+            success:false,
+            error:e.message
+        };
+    }
+}
+  
+const tools = [
+  { type: "web_search" },
+  {
     type:"function",
       function:{
         name:"getMessage",
@@ -97,7 +210,46 @@ const tools = [{
             required: ["targets", "duration"]
           }
         }
-     }];
+     },
+  {
+    type:"function",
+    function:{
+        name:"generateImage",
+        description:
+        "Generate an image and save it locally. Returns only an image ID, never the image data.",
+        parameters:{
+            type:"object",
+            properties:{
+                prompt:{
+                    type:"string",
+                    description:"Description of the image to generate."
+                }
+            },
+            required:["prompt"]
+        }
+    }
+}
+];
+async function resolveLocalImages(){
+
+    document.querySelectorAll(
+        'img[src^="image://"]'
+    ).forEach(async img=>{
+
+        const id = img.src.replace(
+            "image://",
+            ""
+        );
+
+        const data = await getImageDB(id);
+
+        img.src = URL.createObjectURL(
+            data.image
+        );
+
+    });
+
+}
 
 async function getSystemRoom() {
   if (systemState.room) return systemState.room;
@@ -147,6 +299,21 @@ You do not automatically know old messages, you only know a certain user recent 
 Your messages can also be displayed in html, the environment you are in renders any markddown format that includes the html
 Means you can also display images using the ![]() markdown formats, this is usable espacially if you want to show something
 You can also display iframes using <iframe> and other html tags
+You can also use the iframes srcDoc to display something, for example Live Clock
+Calculator, or show some magics with HTML rendered
+If the user wants to ask you to play a game you can just also give them an iframe, try searching the web if there are embedble in iframe games they could play, example tictactoe:
+<iframe src="https://solitaires-online.com/tic-tac-toe/#id=473sag9dio,no-nav,no-article,no-feedback,no-ads" title="Tic-Tac-Toe game" width="490" height="360"></iframe>
+You can even embeded desmos like:
+Graphing calculator:
+<iframe src="https://www.desmos.com/calculator" style="border:0px #ffffff none;" name="myiFrame" scrolling="no" frameborder="1" marginheight="0px" marginwidth="0px" height="500px" width="800px" allowfullscreen></iframe>
+scientific calculator:
+<iframe src="https://www.desmos.com/scientific" style="border:0px #ffffff none;" name="myiFrame" scrolling="no" frameborder="1" marginheight="0px" marginwidth="0px" height="400px" width="600px" allowfullscreen></iframe>
+Four Function(Normal calculator):
+
+<iframe src="https://www.desmos.com/fourfunction" style="border:0px #ffffff none;" name="myiFrame" scrolling="no" frameborder="1" marginheight="0px" marginwidth="0px" height="400px" width="600px" allowfullscreen></iframe>
+etc
+Just make sure they're embedable
+Also all youtube URL are automatically render as an embeded iframe, so sending a yt url is a valid way to show a video if they asked one
 To retrieve old messages use:
 getMessage(targets)
 
@@ -155,6 +322,10 @@ kickUser(target)
 
 To timeout 1 or more user at certain miliseconds:
 timeoutUser(target)
+
+To generate an Image:
+generateImage(prompt)
+Warn the user that generated image is saved inside there browser so they're the only one who can see it.
 `
 };
 }
@@ -184,19 +355,74 @@ async function sendSystem(message) {
 
       if (msg?.tool_calls?.length) {
         messages.push(msg);
-
+    
         for (const call of msg.tool_calls) {
-          if (call.function?.name === "getMessage") {
-            let args = { targets: [] };
-            try { args = JSON.parse(call.function.arguments || "{}"); } catch {}
+    
+            let args = {};
+    
+            try {
+                args = JSON.parse(
+                    call.function.arguments || "{}"
+                );
+            } catch {}
+    
+            let result = "";
+    
+            switch(call.function.name){
+    
+                case "getMessage":
+    
+                    result = getMessage(
+                        args.targets || []
+                    );
+    
+                break;
+    
+    
+                case "kickUser":
+    
+                    result = kickUser(
+                        args.targets || []
+                    );
+    
+                break;
+    
+    
+                case "timeoutUser":
+    
+                    result = timeoutUser(
+                        args.targets || [],
+                        args.duration
+                    );
+    
+                break;
+    
+    
+                case "generateImage":
+    
+                    result = await generateImage(
+                        args.prompt || ""
+                    );
+    
+                break;
+    
+    
+                default:
+    
+                    result = "Unknown tool.";
+            }
+    
+    
             messages.push({
-              role:"tool",
-              tool_call_id:call.id,
-              content:getMessage(args.targets)
+                role:"tool",
+                tool_call_id:call.id,
+                content:
+                    typeof result === "string"
+                    ? result
+                    : JSON.stringify(result)
             });
-          }
         }
-
+    
         continue;
       }
 
