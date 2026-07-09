@@ -9,6 +9,215 @@
   <script src="https://cdn.ably.com/lib/ably-chat.umd.cjs-0.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/emoji-js@3.8.0/lib/emoji.js"></script>
+  <script src="https://js.puter.com/v2/"></script>
+<script src="https://js.puter.com/v2/"></script>
+<script>
+
+const messages = [{ role:"system", content:"" }];
+const systemState = { realtime:null, chatClient:null, room:null };
+
+function getMessage(targets) {
+    const wanted = new Set((targets || []).map(x => x.toLowerCase()));
+    let result = "";
+
+    const messages = Array.from(state.messages.values())
+        .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+    for (const msg of messages) {
+        const username = (msg.clientId || "Guest").toLowerCase();
+
+        if (!wanted.has(username)) continue;
+
+        result += `[USER][${msg.clientId}]: ${msg.text}\n`;
+    }
+
+    return result || "No messages found.";
+}
+
+function timeoutUser(targets) {
+    // To be implmented(ignore)
+}
+
+function kickUser(targets) {
+    // To be implmented(ignore)
+}
+
+
+const tools = [{
+    type:"function",
+      function:{
+        name:"getMessage",
+        description:"Retrieve previous chat messages from specific users.",
+        parameters:{
+          type:"object",
+          properties:{
+            targets:{
+              type:"array",
+              items:{ type:"string" }
+            }
+          },
+          required:["targets"]
+        }
+      }
+    },
+    {
+    type: "function",
+        function: {
+          name: "kickUser",
+          description: "Kick one or more users from the room.",
+          parameters: {
+            type: "object",
+            properties: {
+              targets: {
+                type: "array",
+                items: { type: "string" }
+              }
+            },
+            required: ["targets"]
+          }
+        }
+      },
+    {
+    type: "function",
+        function: {
+          name: "timeoutUser",
+          description: "Temporarily timeout one or more users.",
+          parameters: {
+            type: "object",
+            properties: {
+              targets: {
+                type: "array",
+                items: { type: "string" }
+              },
+              duration: {
+                type: "number",
+                description: "Timeout duration in milliseconds."
+              }
+            },
+            required: ["targets", "duration"]
+          }
+        }
+     }];
+
+async function getSystemRoom() {
+  if (systemState.room) return systemState.room;
+
+  systemState.realtime = new Ably.Realtime({
+    key: ABLY_API_KEY,
+    clientId: "SystemAI"
+  });
+
+  systemState.chatClient = new AblyChat.ChatClient(systemState.realtime);
+  systemState.room = await systemState.chatClient.rooms.get(state.roomName);
+  await systemState.room.attach();
+
+  await systemState.room.presence.enter({
+    username:"SystemAI",
+    avatar:avatarUrl("SystemAI"),
+    status:"active",
+    lastSeen:Date.now()
+  });
+
+  return systemState.room;
+}
+
+function updateSystemPrompt() {
+    messages[0] = {
+  role: "system",
+  content: `
+You are @SystemAI.
+
+You are inside a chat room with multiple users.
+
+Messages use this format:
+
+[TYPE][USERNAME]: MESSAGE
+
+TYPE means user category:
+USER = normal user
+DEV = developer
+ADMIN = administrator
+AI = artificial intelligence
+SYSTEM = system message
+
+Users currently inside the room:
+${(window.users || []).map(u => `[${u.role}][${u.username}]`).join("\n")}
+
+You do not automatically know old messages, you only know a certain user recent messages.
+Your messages can also be displayed in html, the environment you are in renders any markddown format that includes the html
+Means you can also display images using the ![]() markdown formats, this is usable espacially if you want to show something
+You can also display iframes using <iframe> and other html tags
+To retrieve old messages use:
+getMessage(targets)
+
+To kick 1 or more user from the room:
+kickUser(target)
+
+To timeout 1 or more user at certain miliseconds:
+timeoutUser(target)
+`
+};
+}
+
+async function sendSystem(message) {
+  if (!message) return "";
+  updateSystemPrompt();
+
+  const room = await getSystemRoom();
+  messages.push({
+    role: "user",
+    content: `[USER][${state.username}]: ${message}`
+  });
+
+  let reply = "";
+  let typingTimer = null;
+
+  try {
+    await room.typing.keystroke().catch(() => {});
+    typingTimer = setInterval(() => {
+      room.typing.keystroke().catch(() => {});
+    }, 1200);
+
+    while (true) {
+      const res = await puter.ai.chat(messages, { tools });
+      const msg = res?.message ?? res;
+
+      if (msg?.tool_calls?.length) {
+        messages.push(msg);
+
+        for (const call of msg.tool_calls) {
+          if (call.function?.name === "getMessage") {
+            let args = { targets: [] };
+            try { args = JSON.parse(call.function.arguments || "{}"); } catch {}
+            messages.push({
+              role:"tool",
+              tool_call_id:call.id,
+              content:getMessage(args.targets)
+            });
+          }
+        }
+
+        continue;
+      }
+
+      reply = msg?.content || "";
+      messages.push({ role:"assistant", content:reply });
+
+      await room.messages.send({
+        text: reply,
+        metadata: { systemAI: true }
+      });
+
+      return reply;
+    }
+  } finally {
+    clearInterval(typingTimer);
+    await room.typing.stop().catch(() => {});
+  }
+}
+
+window.sendSystem = sendSystem;
+</script>
   <style>
     :root {
       --bg: #0b1020;
@@ -639,6 +848,344 @@
       border:none;
       border-radius:12px;
     }
+    /* =========================
+   CODE BLOCK
+   ========================= */
+/* ===========================
+   BLOCK CODE
+   =========================== */
+
+.code-wrapper{
+    white-space: normal;
+    margin:12px 0;
+    border:1px solid var(--line);
+    border-radius:16px;
+    overflow:hidden;
+    background:#0b1020;
+}
+
+.code-header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    padding:8px 12px;
+    background:#171f38;
+    border-bottom:1px solid var(--line);
+}
+
+.code-title{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:13px;
+    font-weight:700;
+    min-width:0;
+}
+
+.code-title img{
+    width:18px;
+    height:18px;
+    flex:0 0 auto;
+}
+
+.code-title span{
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+
+.code-actions{
+    display:flex;
+    gap:6px;
+    flex:0 0 auto;
+}
+
+.code-actions button{
+    all:unset;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    width:28px;
+    height:28px;
+    border-radius:8px;
+    background:rgba(255,255,255,.06);
+    transition:.18s;
+}
+
+.code-actions button:hover{
+    background:rgba(255,255,255,.12);
+}
+
+.code-actions img{
+    width:16px;
+    height:16px;
+}
+
+/* ---------- Body ---------- */
+
+.code-wrapper pre{
+    position:relative;
+    margin:0;
+    background:none;
+    border:none;
+    border-radius:0;
+    box-shadow:none;
+}
+
+/* top fade */
+
+.code-wrapper pre::before{
+    content:"";
+    position:absolute;
+    left:0;
+    right:0;
+    top:0;
+    height:22px;
+    pointer-events:none;
+    z-index:2;
+    background:linear-gradient(
+        to bottom,
+        #0b1020 0%,
+        rgba(11,16,32,.92) 35%,
+        rgba(11,16,32,0) 100%
+    );
+}
+
+/* bottom fade */
+
+.code-wrapper pre::after{
+    content:"";
+    position:absolute;
+    left:0;
+    right:0;
+    bottom:0;
+    height:24px;
+    pointer-events:none;
+    z-index:2;
+    background:linear-gradient(
+        to top,
+        #0b1020 0%,
+        rgba(11,16,32,.92) 35%,
+        rgba(11,16,32,0) 100%
+    );
+}
+
+.code-wrapper pre code{
+    display:block;
+    overflow:auto;
+    max-height:calc(20 * 1.45em);
+    padding:12px 0;
+    font-size:13px;
+    line-height:1.45;
+    white-space:pre;
+    counter-reset:line;
+    scrollbar-width:thin;
+    background:transparent;
+}
+
+/* line numbers */
+
+.code-wrapper pre code>span{
+    display:block;
+    padding:0 14px;
+    counter-increment:line;
+}
+
+.code-wrapper pre code>span::before{
+    content:counter(line);
+    display:inline-block;
+    width:38px;
+    margin-right:12px;
+    text-align:right;
+    color:var(--muted);
+    user-select:none;
+    opacity:.65;
+}
+
+/* scrollbar */
+
+.code-wrapper pre code::-webkit-scrollbar{
+    width:8px;
+    height:8px;
+}
+
+.code-wrapper pre code::-webkit-scrollbar-thumb{
+    background:rgba(255,255,255,.18);
+    border-radius:999px;
+}
+
+.code-wrapper pre code::-webkit-scrollbar-track{
+    background:transparent;
+}
+
+/* ---------- Footer ---------- */
+
+.code-footer{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:6px;
+    padding:6px;
+    border-top:1px solid var(--line);
+    background:#171f38;
+    font-size:11px;
+    color:var(--muted);
+}
+
+/* ===========================
+   INLINE CODE
+   =========================== */
+
+.inline-code{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    padding:2px 2px 2px 8px;
+    border-radius:8px;
+    background:rgba(255,255,255,.08);
+    border:1px solid var(--line);
+    vertical-align:middle;
+}
+
+.inline-code code{
+    background:none;
+    border:none;
+    padding:0;
+    color:#9fd1ff;
+    white-space:nowrap;
+}
+
+.inline-code button{
+    all:unset;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    width:22px;
+    height:22px;
+    border-radius:6px;
+    transition:.18s;
+}
+
+.inline-code button:hover{
+    background:rgba(255,255,255,.08);
+}
+
+.inline-code img{
+    width:14px;
+    height:14px;
+}
+.code-modal{
+    width:min(1200px,96vw);
+    height:min(92vh,96vh);
+
+    display:flex;
+    flex-direction:column;
+
+    background:#0b1020;
+
+    border:1px solid var(--line);
+    border-radius:18px;
+
+    overflow:hidden;
+}
+
+.code-modal pre{
+    flex:1;
+
+    margin:0;
+    position:relative;
+}
+
+.code-modal pre::before{
+    content:"";
+
+    position:absolute;
+
+    left:0;
+    right:0;
+    top:0;
+
+    height:24px;
+
+    pointer-events:none;
+
+    z-index:2;
+
+    background:linear-gradient(
+        to bottom,
+        #0b1020,
+        rgba(11,16,32,0)
+    );
+}
+
+.code-modal pre::after{
+    content:"";
+
+    position:absolute;
+
+    left:0;
+    right:0;
+    bottom:0;
+
+    height:24px;
+
+    pointer-events:none;
+
+    z-index:2;
+
+    background:linear-gradient(
+        to top,
+        #0b1020,
+        rgba(11,16,32,0)
+    );
+}
+
+.code-modal code{
+    display:block;
+
+    overflow:auto;
+
+    height:100%;
+
+    padding:14px 0;
+
+    font-size:14px;
+
+    line-height:1.45;
+
+    white-space:pre;
+
+    counter-reset:line;
+}
+
+.code-modal code>span{
+    display:block;
+
+    padding:0 18px;
+
+    counter-increment:line;
+}
+
+.code-modal code>span::before{
+    content:counter(line);
+
+    display:inline-block;
+
+    width:40px;
+
+    margin-right:12px;
+
+    text-align:right;
+
+    color:var(--muted);
+
+    user-select:none;
+
+    opacity:.65;
+}
   </style>
 </head>
 <body>
@@ -750,11 +1297,41 @@
       </div>
     </div>
   </div>
+  <!-- Code Viewer Modal -->
+  <div id="codeModal" class="overlay hidden">
+      <div class="code-modal">
+  
+          <div class="code-header">
+              <div class="code-title">
+                  <img id="codeModalIcon"
+                       src="https://api.iconify.design/mdi:file-code-outline.svg">
+                  <span id="codeModalLang">TEXT</span>
+              </div>
+  
+              <div class="code-actions">
+                  <button id="codeModalCopy" title="Copy">
+                      <img src="https://api.iconify.design/material-symbols:content-copy-outline.svg">
+                  </button>
+  
+                  <button id="codeModalClose" title="Close">
+                      <img src="https://api.iconify.design/material-symbols:close-rounded.svg">
+                  </button>
+              </div>
+          </div>
+  
+          <pre><code id="codeModalCode"></code></pre>
+  
+          <div class="code-footer">
+              <span id="codeModalInfo"></span>
+          </div>
+  
+      </div>
+  </div>
+  
   <script>
     const ABLY_API_KEY = "cAcdHw.nX-eHg:JnFXnKmlPiJYPPDazl38FK9VCQxDLMr6uE4MqAwSLhE";
     const USERS_KEY = "ably_demo_users_v7";
     const PREF_KEY = "ably_demo_autoscroll_v1";
-
     const state = {
       roomName: "",
       username: "",
@@ -802,7 +1379,7 @@
       replyAuthor: document.getElementById("replyAuthor"),
       replySnippet: document.getElementById("replySnippet")
     };
-
+    
     el.autoScrollToggle.checked = state.autoScroll;
 
     function loadUsers() {
@@ -987,11 +1564,126 @@
       );
     }
     function renderMarkdown(text) {
-      let html = marked.parse(text || "");
-      html = emoji.replace_colons(html);
-      html = replaceYoutubeLinks(html);
-      return html;
+    let html = marked.parse(text || "");
+    html = emoji.replace_colons(html);
+    html = replaceYoutubeLinks(html);
+
+    const div = document.createElement("div");
+    div.innerHTML = html;
+
+    const iconMap = {
+        js: "logos:javascript",
+        javascript: "logos:javascript",
+        html: "vscode-icons:file-type-html",
+        css: "vscode-icons:file-type-css",
+        java: "logos:java",
+        cpp: "vscode-icons:file-type-cpp",
+        c: "vscode-icons:file-type-c",
+        cs: "vscode-icons:file-type-csharp",
+        python: "logos:python",
+        php: "logos:php",
+        json: "vscode-icons:file-type-json",
+        xml: "vscode-icons:file-type-xml",
+        sql: "vscode-icons:file-type-sql",
+        bash: "vscode-icons:file-type-shell",
+        sh: "vscode-icons:file-type-shell",
+        text: "mdi:file-document-outline"
+    };
+
+    function getIconForLang(lang) {
+        return iconMap[String(lang || "text").toLowerCase()] || "mdi:file-code-outline";
     }
+
+    function escapeText(str) {
+        return String(str)
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#39;");
+    }
+
+    /* fenced code blocks: <pre><code> */
+    div.querySelectorAll("pre").forEach((pre, index) => {
+        const code = pre.querySelector("code");
+        if (!code) return;
+
+        const cls = [...code.classList].find(c => c.startsWith("language-")) || "";
+        const lang = cls.replace("language-", "") || "text";
+        const icon = getIconForLang(lang);
+
+        const raw = code.textContent || "";
+        code.innerHTML = raw
+            .split("\n")
+            .map(line => `<span>${escapeText(line || " ")}</span>`)
+            .join("");
+
+        const wrapper = document.createElement("div");
+        wrapper.className = "code-wrapper";
+
+        wrapper.innerHTML = `
+            <div class="code-header">
+                <div class="code-title">
+                    <img src="https://api.iconify.design/${icon}.svg" alt="${escapeText(lang)}">
+                    <span>${escapeText(lang.toUpperCase())}</span>
+                </div>
+                <div class="code-actions">
+                    <button class="code-open" type="button" data-index="${index}" title="Open">
+                        <img src="https://api.iconify.design/material-symbols:open-in-new.svg" alt="Open">
+                    </button>
+                    <button class="code-copy" type="button" title="Copy">
+                        <img src="https://api.iconify.design/material-symbols:content-copy-outline.svg" alt="Copy">
+                    </button>
+                </div>
+            </div>
+        `;
+
+        pre.parentNode.insertBefore(wrapper, pre);
+        wrapper.appendChild(pre);
+
+        wrapper.querySelector(".code-copy").onclick = async () => {
+            try {
+                await navigator.clipboard.writeText(raw);
+            } catch {}
+        };
+
+        wrapper.querySelector(".code-open").onclick = () => {
+           openCode(code);
+        };
+
+        const footer = document.createElement("div");
+        footer.className = "code-footer";
+        footer.textContent = `${lang.toUpperCase()} • ${raw.split("\n").length} lines`;
+        wrapper.appendChild(footer);
+    });
+
+    /* inline code: `code` */
+    div.querySelectorAll("code:not(pre code)").forEach((codeEl) => {
+        const raw = codeEl.textContent || "";
+        const wrap = document.createElement("span");
+        wrap.className = "inline-code";
+
+        const inner = document.createElement("code");
+        inner.textContent = raw;
+
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.title = "Copy";
+        btn.innerHTML = `<img src="https://api.iconify.design/material-symbols:content-copy-outline.svg" alt="Copy">`;
+
+        btn.onclick = async () => {
+            try {
+                await navigator.clipboard.writeText(raw);
+            } catch {}
+        };
+
+        wrap.appendChild(inner);
+        wrap.appendChild(btn);
+        codeEl.replaceWith(wrap);
+    });
+
+    return div.innerHTML;
+}
     function resolveReplyTarget(reply) {
       if (!reply) return null;
       if (reply.serial && state.messages.has(reply.serial)) {
@@ -1192,6 +1884,7 @@
       if (status.includes("away")) {
         state.presenceMap.delete(clientId);
         alertMessage(`${name} left the room`, 0, 5000);
+        
       } else if (status.includes("active")) {
         state.presenceMap.set(clientId, member);
         alertMessage(`${name} entered the room`, 0, 5000);
@@ -1434,6 +2127,17 @@
         await state.room.messages.send(payload);
         clearReplyMode();
         await state.room.typing.stop().catch(() => {});
+        if (text.toLowerCase().includes("@systemai")) {
+          (async () => {
+            const prompt = text.toLowerCase().replace("@systemai", "").trim() || "No message";
+            const reply = await sendSystem(prompt);
+        
+            await getSystemRoom();
+            
+            console.log("=== FULL REPLY ===");
+            console.log(reply);
+          })();
+        }
       } catch (err) {
         console.error(err);
         alert("Message send failed.");
@@ -1609,6 +2313,72 @@
         if (!s.src) s.remove();
       });
     });
+
+  function openCode(codeElement){
+  
+      const modal=document.getElementById("codeModal");
+  
+      const icon=modal.querySelector("#codeModalIcon");
+      const lang=modal.querySelector("#codeModalLang");
+      const code=modal.querySelector("#codeModalCode");
+      const info=modal.querySelector("#codeModalInfo");
+  
+      const cls=[...codeElement.classList]
+          .find(c=>c.startsWith("language-"))||"";
+  
+      const language=cls.replace("language-","")||"TEXT";
+  
+      const icons={
+          js:"logos:javascript",
+          javascript:"logos:javascript",
+          html:"vscode-icons:file-type-html",
+          css:"vscode-icons:file-type-css",
+          java:"logos:java",
+          cpp:"vscode-icons:file-type-cpp",
+          c:"vscode-icons:file-type-c",
+          cs:"vscode-icons:file-type-csharp",
+          python:"logos:python",
+          php:"logos:php",
+          json:"vscode-icons:file-type-json",
+          xml:"vscode-icons:file-type-xml",
+          sql:"vscode-icons:file-type-sql",
+          bash:"vscode-icons:file-type-shell",
+          sh:"vscode-icons:file-type-shell",
+          text:"mdi:file-document-outline"
+      };
+  
+      icon.src=`https://api.iconify.design/${
+          icons[language.toLowerCase()]||
+          "mdi:file-code-outline"
+      }.svg`;
+  
+      lang.textContent=language.toUpperCase();
+  
+      const raw=codeElement.textContent;
+  
+      code.innerHTML=raw
+          .split("\n")
+          .map(x=>`<span>${x||" "}</span>`)
+          .join("");
+  
+      info.textContent=
+          `${raw.split("\n").length} lines • ${raw.length} characters`;
+  
+      document.getElementById("codeModalCopy").onclick=()=>{
+          copyClipboard(raw);
+      };
+  
+      document.getElementById("codeModalClose").onclick=()=>{
+          modal.classList.add("hidden");
+      };
+  
+      modal.onclick=e=>{
+          if(e.target===modal)
+              modal.classList.add("hidden");
+      };
+  
+      modal.classList.remove("hidden");
+  }
   </script>
 </body>
 </html>
