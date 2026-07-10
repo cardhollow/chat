@@ -90,11 +90,8 @@ async function saveImageDB(data){
         tx.objectStore(imageStore)
           .put(data);
 
-
         tx.oncomplete = resolve;
-
         tx.onerror = () => reject(tx.error);
-
     });
 
 }
@@ -231,7 +228,6 @@ const tools = [
 }
 ];
 async function resolveLocalImages(){
-
     document.querySelectorAll(
         'img[src^="image://"]'
     ).forEach(async img=>{
@@ -300,7 +296,7 @@ Your messages can also be displayed in html, the environment you are in renders 
 Means you can also display images using the ![]() markdown formats, this is usable espacially if you want to show something
 You can also display iframes using <iframe> and other html tags
 You can also use the iframes srcDoc to display something, for example Live Clock
-Calculator, or show some magics with HTML rendered
+Calculator, or show some magics with HTML rendered, all are possiblities, from running any JS, Creating a game, A website, and all you can render.
 If the user wants to ask you to play a game you can just also give them an iframe, try searching the web if there are embedble in iframe games they could play, example tictactoe:
 <iframe src="https://solitaires-online.com/tic-tac-toe/#id=473sag9dio,no-nav,no-article,no-feedback,no-ads" title="Tic-Tac-Toe game" width="490" height="360"></iframe>
 You can even embeded desmos like:
@@ -1306,40 +1302,29 @@ window.sendSystem = sendSystem;
 .code-modal{
     width:min(1200px,96vw);
     height:min(92vh,96vh);
-
     display:flex;
     flex-direction:column;
-
     background:#0b1020;
-
     border:1px solid var(--line);
     border-radius:18px;
-
     overflow:hidden;
 }
 
 .code-modal pre{
     flex:1;
-
     margin:0;
     position:relative;
 }
 
 .code-modal pre::before{
     content:"";
-
     position:absolute;
-
     left:0;
     right:0;
     top:0;
-
     height:24px;
-
     pointer-events:none;
-
     z-index:2;
-
     background:linear-gradient(
         to bottom,
         #0b1020,
@@ -1349,19 +1334,13 @@ window.sendSystem = sendSystem;
 
 .code-modal pre::after{
     content:"";
-
     position:absolute;
-
     left:0;
     right:0;
     bottom:0;
-
     height:24px;
-
     pointer-events:none;
-
     z-index:2;
-
     background:linear-gradient(
         to top,
         #0b1020,
@@ -1371,19 +1350,12 @@ window.sendSystem = sendSystem;
 
 .code-modal code{
     display:block;
-
     overflow:auto;
-
     height:100%;
-
     padding:14px 0;
-
     font-size:14px;
-
     line-height:1.45;
-
     white-space:pre;
-
     counter-reset:line;
 }
 
@@ -1411,6 +1383,21 @@ window.sendSystem = sendSystem;
     user-select:none;
 
     opacity:.65;
+}
+
+.code-body{
+    flex:1;
+    overflow:auto;
+}
+
+.code-body pre{
+    margin:0;
+    overflow:auto;
+}
+
+.code-body code{
+    display:block;
+    white-space:pre;
 }
   </style>
 </head>
@@ -1483,6 +1470,7 @@ window.sendSystem = sendSystem;
 
       <div class="actions">
         <button id="saveSettingsBtn">Save settings</button>
+        <button onclick="logout()">Logout</button>
       </div>
     </div>
   </div>
@@ -1538,26 +1526,31 @@ window.sendSystem = sendSystem;
                   <button id="codeModalCopy" title="Copy">
                       <img src="https://api.iconify.design/material-symbols:content-copy-outline.svg">
                   </button>
-  
-                  <button id="codeModalClose" title="Close">
+                  
+                  <button onclick="document.getElementById('codeModal').classList.add('hidden')" title="Close">
                       <img src="https://api.iconify.design/material-symbols:close-rounded.svg">
                   </button>
               </div>
           </div>
   
-          <pre><code id="codeModalCode"></code></pre>
+          <div class="code-body">
+              <pre class="code-block">
+                  <code id="codeModalCode"></code>
+              </pre>
+          </div>
   
           <div class="code-footer">
               <span id="codeModalInfo"></span>
           </div>
   
       </div>
-  </div>
-  
+  </div>  
   <script>
     const ABLY_API_KEY = "cAcdHw.nX-eHg:JnFXnKmlPiJYPPDazl38FK9VCQxDLMr6uE4MqAwSLhE";
     const USERS_KEY = "ably_demo_users_v7";
     const PREF_KEY = "ably_demo_autoscroll_v1";
+    const savedLogin = ["", "", ""]; // [roomName, username, password]
+    
     const state = {
       roomName: "",
       username: "",
@@ -1574,7 +1567,7 @@ window.sendSystem = sendSystem;
       expandedMessageSerial: null,
       replyTo: null
     };
-
+    
     const el = {
       joinOverlay: document.getElementById("joinOverlay"),
       menuOverlay: document.getElementById("menuOverlay"),
@@ -1605,6 +1598,54 @@ window.sendSystem = sendSystem;
       replyAuthor: document.getElementById("replyAuthor"),
       replySnippet: document.getElementById("replySnippet")
     };
+    
+    
+    function saveAccount() {
+      localStorage.setItem(
+        "savedLogin",
+        JSON.stringify([
+          state.roomName,
+          state.username,
+          state.password
+        ])
+      );
+      console.log("CODE");
+    }
+    
+    function autoLogin() {
+      const data = localStorage.getItem("savedLogin");
+      if (!data) return false;
+    
+      try {
+        const [roomName, username, password] = JSON.parse(data);
+    
+        state.roomName = roomName || "";
+        state.username = username || "";
+        state.password = password || "";
+    
+        // Optional: Fill input boxes automatically
+        document.getElementById("roomInput").value = state.roomName;
+        document.getElementById("userInput").value = state.username;
+        document.getElementById("passInput").value = state.password;
+        joinRoom();
+        return true;
+      } catch (e) {
+        localStorage.removeItem("savedLogin");
+        return false;
+      }
+    }
+    
+    function logout() {
+      localStorage.removeItem("savedLogin");
+    
+      state.roomName = "";
+      state.username = "";
+      state.password = "";
+      
+      window.location.reload();
+    }
+    
+    autoLogin();
     
     el.autoScrollToggle.checked = state.autoScroll;
 
@@ -1839,14 +1880,18 @@ window.sendSystem = sendSystem;
         const icon = getIconForLang(lang);
 
         const raw = code.textContent || "";
+        code.dataset.raw = raw;
+        
         code.innerHTML = raw
             .split("\n")
             .map(line => `<span>${escapeText(line || " ")}</span>`)
             .join("");
-
+        
+        code.id = crypto.randomUUID();
+        
         const wrapper = document.createElement("div");
         wrapper.className = "code-wrapper";
-
+        
         wrapper.innerHTML = `
             <div class="code-header">
                 <div class="code-title">
@@ -1854,10 +1899,10 @@ window.sendSystem = sendSystem;
                     <span>${escapeText(lang.toUpperCase())}</span>
                 </div>
                 <div class="code-actions">
-                    <button class="code-open" type="button" data-index="${index}" title="Open">
+                    <button class="code-open" type="button" data-index="${index}" title="Open" onclick="openCode('${code.id}', '${icon}', '${escapeText(lang.toUpperCase())}')">
                         <img src="https://api.iconify.design/material-symbols:open-in-new.svg" alt="Open">
                     </button>
-                    <button class="code-copy" type="button" title="Copy">
+                    <button class="code-copy" type="button" title="Copy" onclick="copyCode('${code.id}')">
                         <img src="https://api.iconify.design/material-symbols:content-copy-outline.svg" alt="Copy">
                     </button>
                 </div>
@@ -1866,16 +1911,6 @@ window.sendSystem = sendSystem;
 
         pre.parentNode.insertBefore(wrapper, pre);
         wrapper.appendChild(pre);
-
-        wrapper.querySelector(".code-copy").onclick = async () => {
-            try {
-                await navigator.clipboard.writeText(raw);
-            } catch {}
-        };
-
-        wrapper.querySelector(".code-open").onclick = () => {
-           openCode(code);
-        };
 
         const footer = document.createElement("div");
         footer.className = "code-footer";
@@ -1886,30 +1921,116 @@ window.sendSystem = sendSystem;
     /* inline code: `code` */
     div.querySelectorAll("code:not(pre code)").forEach((codeEl) => {
         const raw = codeEl.textContent || "";
+    
+        const inner = document.createElement("code");
+        inner.id = crypto.randomUUID();
+        inner.dataset.raw = raw;
+        inner.textContent = raw;
+    
         const wrap = document.createElement("span");
         wrap.className = "inline-code";
-
-        const inner = document.createElement("code");
-        inner.textContent = raw;
-
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.title = "Copy";
-        btn.innerHTML = `<img src="https://api.iconify.design/material-symbols:content-copy-outline.svg" alt="Copy">`;
-
-        btn.onclick = async () => {
-            try {
-                await navigator.clipboard.writeText(raw);
-            } catch {}
-        };
-
-        wrap.appendChild(inner);
-        wrap.appendChild(btn);
+    
+        wrap.innerHTML = `
+            <code id="${inner.id}">${escapeText(raw)}</code>
+            <button
+                type="button"
+                title="Copy"
+                onclick="copyCode('${inner.id}')">
+                <img
+                    src="https://api.iconify.design/material-symbols:content-copy-outline.svg"
+                    alt="Copy">
+            </button>
+        `;
+    
+        // Restore the original raw text after innerHTML escaped it
+        const newCode = wrap.querySelector("code");
+        newCode.dataset.raw = raw;
+        newCode.textContent = raw;
+    
         codeEl.replaceWith(wrap);
     });
+        return div.innerHTML;
+    }
+    
+    function buildMessageItem(msg) {
+      const senderId = msg.clientId || "Guest";
+      const isMine = senderId === state.username;
+    
+      const senderInfo = isMine
+        ? { username: state.username, avatar: avatarUrl(state.username) }
+        : getUserInfo(senderId);
+    
+      rememberUser(senderId, {
+        username: senderInfo.username || senderId,
+        avatar: senderInfo.avatar || avatarUrl(senderInfo.username || senderId)
+      });
+    
+      const date = msg.timestamp ? new Date(msg.timestamp).toLocaleDateString([], {
+        month: "short",
+        day: "2-digit",
+        year: "numeric"
+      }) : "";
+    
+      const time = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit"
+      }) : "";
+    
+      const replyMeta = msg.metadata?.reply;
+      const replyHtml = replyMeta ? buildReplyInlineHtml(replyMeta) : "";
+    
+      const item = document.createElement("div");
+      item.className = `message-item ${isMine ? "mine" : "other"}`;
+      item.dataset.serial = msg.serial;
+      item.dataset.client = senderId;
+    
+      item.innerHTML = `
+        ${replyHtml}
+        <div class="message-box">${renderMarkdown(msg.text || "")}</div>
+        <div class="message-meta">
+          <img class="avatar avatar-sm" src="${escapeHtml(senderInfo.avatar)}" alt="${escapeHtml(senderInfo.username)}">
+          <span class="name">${escapeHtml(senderInfo.username)}</span>
+          <span class="date">${escapeHtml(date)} • ${escapeHtml(time)}</span>
+        </div>
+      `;
+    
+      return item;
+    }
+    function appendMessage(message) {
+      if (!message || !message.serial) return;
+    
+      // If message already exists, do not rerender everything.
+      const existing = el.messagesList.querySelector(
+        `.message-item[data-serial="${cssEscapeValue(message.serial)}"]`
+      );
+      if (existing) return;
+    
+      const senderId = message.clientId || "Guest";
+      const mine = senderId === state.username;
+      const groupClass = mine ? "mine" : "other";
+    
+      const lastGroup = el.messagesList.lastElementChild;
+      let group = null;
+    
+      if (
+        lastGroup &&
+        lastGroup.classList.contains("message-group") &&
+        lastGroup.classList.contains(groupClass)
+      ) {
+        group = lastGroup;
+      } else {
+        group = document.createElement("div");
+        group.className = `message-group ${groupClass}`;
+        el.messagesList.appendChild(group);
+      }
+    
+      group.appendChild(buildMessageItem(message));
+    
+      if (state.autoScroll) {
+        scrollMessagesToBottom();
+      }
+    }
 
-    return div.innerHTML;
-}
     function resolveReplyTarget(reply) {
       if (!reply) return null;
       if (reply.serial && state.messages.has(reply.serial)) {
@@ -2070,9 +2191,9 @@ window.sendSystem = sendSystem;
       if (message.clientId) {
         rememberUser(message.clientId, { username: displayNameForClientId(message.clientId) });
       }
-      renderMessages();
+      appendMessage(message);
+      renderTopCounts();
     }
-
     function normalizeTypingUsers(event) {
       if (Array.isArray(event.currentTypers)) return event.currentTypers;
       if (event.currentlyTyping instanceof Set) {
@@ -2087,36 +2208,34 @@ window.sendSystem = sendSystem;
     function handleTypingEvent(event) {
       const current = normalizeTypingUsers(event);
       state.typingIds = new Set(current.map(u => u.clientId).filter(Boolean));
-      renderMessages();
+      renderTypingDock();   // not renderMessages()
     }
 
     function handlePresenceEvent(event) {
       const member = event.member;
       if (!member) return;
-
+    
       const clientId = member.clientId || "";
       const name = member.data?.username || clientId || "Guest";
       const avatar = member.data?.avatar || avatarUrl(name);
       const status = String(member.data?.status || "active").toLowerCase();
-      const type = String(event.type || "").toLowerCase();
-
+    
       rememberUser(clientId, {
         username: name,
         avatar,
         status,
         lastSeen: member.updatedAt ? new Date(member.updatedAt).getTime() : Date.now()
       });
-
+    
       if (status.includes("away")) {
         state.presenceMap.delete(clientId);
         alertMessage(`${name} left the room`, 0, 5000);
-        
       } else if (status.includes("active")) {
         state.presenceMap.set(clientId, member);
         alertMessage(`${name} entered the room`, 0, 5000);
       }
-
-      renderMessages();
+    
+      renderTopCounts();
       renderMenu();
     }
 
@@ -2230,7 +2349,7 @@ window.sendSystem = sendSystem;
         alert("Fill in room, username, and password.");
         return;
       }
-
+      
       const isSpecialUser = [
         "chxd",
         "admin",
@@ -2328,6 +2447,8 @@ window.sendSystem = sendSystem;
 
         setAppVisible(true);
         el.messageInput.focus();
+        
+        saveAccount();
       } catch (err) {
         console.error(err);
         alert("Failed to join the room. Check the API key and open the console.");
@@ -2335,6 +2456,12 @@ window.sendSystem = sendSystem;
         el.joinBtn.textContent = "Join";
         state.connectionState = "failed";
       }
+    }
+
+    function renderTypingDock() {
+      const typingHtml = buildTypingSnippet();
+      el.typingDock.classList.toggle("hidden", !typingHtml);
+      el.typingDockContent.innerHTML = typingHtml || "";
     }
 
     async function sendMessage() {
@@ -2417,7 +2544,11 @@ window.sendSystem = sendSystem;
     function clearExpandedMessage() {
       if (state.expandedMessageSerial !== null) {
         state.expandedMessageSerial = null;
-        renderMessages();
+    
+        const expanded = el.messagesList.querySelector(".message-item.expanded");
+        if (expanded) expanded.classList.remove("expanded");
+        const bottom = el.messagesList.querySelector(".message-item.is-bottom");
+        if (bottom) bottom.classList.add("is-bottom");
       }
     }
 
@@ -2468,13 +2599,15 @@ window.sendSystem = sendSystem;
 
     async function refreshPresenceForVisibility() {
       if (!state.room || !state.username) return;
+    
       if (document.visibilityState === "visible") {
         await sendPresenceStatus("active");
       } else {
         await sendPresenceStatus("away");
       }
+    
+      renderTopCounts();
       renderMenu();
-      renderMessages();
     }
 
     document.addEventListener("visibilitychange", refreshPresenceForVisibility);
@@ -2531,7 +2664,7 @@ window.sendSystem = sendSystem;
     }
 
     el.roomInput.value = "general";
-    el.userInput.value = "guest-" + Math.floor(Math.random() * 1000);
+    if (userInput.value == "") el.userInput.value = "guest-" + Math.floor(Math.random() * 1000);
     renderMenu();
     renderReplyBar();
     window.addEventListener("load", () => {
@@ -2540,70 +2673,25 @@ window.sendSystem = sendSystem;
       });
     });
 
-  function openCode(codeElement){
-  
-      const modal=document.getElementById("codeModal");
-  
-      const icon=modal.querySelector("#codeModalIcon");
-      const lang=modal.querySelector("#codeModalLang");
-      const code=modal.querySelector("#codeModalCode");
-      const info=modal.querySelector("#codeModalInfo");
-  
-      const cls=[...codeElement.classList]
-          .find(c=>c.startsWith("language-"))||"";
-  
-      const language=cls.replace("language-","")||"TEXT";
-  
-      const icons={
-          js:"logos:javascript",
-          javascript:"logos:javascript",
-          html:"vscode-icons:file-type-html",
-          css:"vscode-icons:file-type-css",
-          java:"logos:java",
-          cpp:"vscode-icons:file-type-cpp",
-          c:"vscode-icons:file-type-c",
-          cs:"vscode-icons:file-type-csharp",
-          python:"logos:python",
-          php:"logos:php",
-          json:"vscode-icons:file-type-json",
-          xml:"vscode-icons:file-type-xml",
-          sql:"vscode-icons:file-type-sql",
-          bash:"vscode-icons:file-type-shell",
-          sh:"vscode-icons:file-type-shell",
-          text:"mdi:file-document-outline"
-      };
-  
-      icon.src=`https://api.iconify.design/${
-          icons[language.toLowerCase()]||
-          "mdi:file-code-outline"
-      }.svg`;
-  
-      lang.textContent=language.toUpperCase();
-  
-      const raw=codeElement.textContent;
-  
-      code.innerHTML=raw
-          .split("\n")
-          .map(x=>`<span>${x||" "}</span>`)
-          .join("");
-  
-      info.textContent=
-          `${raw.split("\n").length} lines • ${raw.length} characters`;
-  
-      document.getElementById("codeModalCopy").onclick=()=>{
-          copyClipboard(raw);
-      };
-  
-      document.getElementById("codeModalClose").onclick=()=>{
-          modal.classList.add("hidden");
-      };
-  
-      modal.onclick=e=>{
-          if(e.target===modal)
-              modal.classList.add("hidden");
-      };
-  
-      modal.classList.remove("hidden");
+  function openCode(code, lang, langText){
+    let codeInput = document.getElementById("codeModalCode")
+    document.getElementById("codeModalIcon").src = `https://api.iconify.design/${lang}.svg`;
+    document.getElementById("codeModalLang").textContent = langText;
+    document.getElementById("codeModal").classList.remove("hidden")
+    console.log(code)
+    codeInput.innerHTML = document.getElementById(code).innerHTML;
+  }
+  async function copyCode(id) {
+    const code = document.getElementById(id);
+    if (!code) return;
+
+    const text = code.dataset.raw;
+
+    try {
+        await navigator.clipboard.writeText(text);
+    } catch (e) {
+        console.error(e);
+    }
   }
   </script>
 </body>
